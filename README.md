@@ -30,7 +30,6 @@ Culpmit sits in the menu bar with the CPU temperature over the fan speed. When s
   <img src="screenshots/touch-bar.gif" alt="The Touch Bar strip: clips arriving and their previews, the readout's details, Shrink, an app's CPU cap and memory line">
 
 - **Everything off:** one click in the menu turns every switch and cap off and wakes idled apps; Everything back turns on what was on.
-- **Updates:** Culpmit checks GitHub for a newer release and shows Update when one is out.
 
 ## Requirements
 
