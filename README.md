@@ -40,8 +40,8 @@ Culpmit sits in the menu bar with the CPU temperature over the fan speed. When s
 
 ### Download
 
-1. Download the latest `Culpmit-x.y.z.zip` from [Releases](https://github.com/booban1/culpmit/releases/latest).
-2. Unzip it and drag Culpmit into Applications.
+1. Download the latest `Culpmit-x.y.z.dmg` from [Releases](https://github.com/booban1/culpmit/releases/latest).
+2. Open it and drag Culpmit onto Applications.
 3. Open Culpmit. macOS asks once to confirm an app from outside the App Store: open System Settings › Privacy & Security and click **Open Anyway**.
 
 ### curl
