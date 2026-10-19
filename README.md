@@ -6,7 +6,7 @@
 
 Culpmit sits in the menu bar with the CPU temperature over the fan speed. When something heats the Mac, it names the app and holds it to a share of the processor, so the fans settle and the work carries on.
 
-<p align="center"><img src="screenshots/test-load.gif" width="420" alt="Test load fills Busy apps; one app gets capped, another idled, while the fans climb"></p>
+<p align="center"><img src="screenshots/menu.gif" alt="Culpmit's menu on a MacBook Pro: the readout's boxes, Cap and Idle on busy apps, the + row's other apps, Keep history and the Shrink images slider"></p>
 
 ## What it does
 
@@ -21,13 +21,13 @@ Culpmit sits in the menu bar with the CPU temperature over the fan speed. When s
 - **Shrink images:** each screenshot on the clipboard shrinks to an image size you choose, 800 to 2,000 px on its long side, so it pastes light into chats and docs. Smaller crops pass as they are.
 - **Clipboard history:** the last ten items, text and images, held in memory. The item on the clipboard now stays out of the list. Text copied on an iPhone, iPad or another Mac joins it; their images stay on that device until you paste them.
 
-  <img src="screenshots/clipboard.gif" width="480" alt="Clipboard history in the menu, with two screenshots and two texts">
+  <img src="screenshots/clipboard.gif" alt="Clipboard history opening from Culpmit's menu on a MacBook Pro, with two screenshots and two texts">
 
 - **Sleep:** Caffeinate on demand, letting go on battery below 20%. Wi-Fi and Bluetooth off while the Mac sleeps. On a laptop, back to sleep when the lid opens and the Mac stays idle. A list of the apps keeping the Mac awake.
 - **Dev tools:** every local server listening on the Mac, one click to open; the cap on a `next dev` run through `cpulimit`; a switch for the [Talk to Figma](https://github.com/grab/cursor-talk-to-figma-mcp) socket on port 3055, which needs [bun](https://bun.sh).
 - **Touch Bar:** the readout with memory last, the switches, the clipboard, and one row of apps: capped and idled apps lit, busy uncapped apps dim, each group a swipe away. A tap does the item's action: a switch flips, a clip copies, an app is capped or freed. A hold opens its details: the readout with units, a switch by name with On and Off, a clip's first line or a larger image, an app's use beside its CPU cap and memory line; VoiceOver reaches them as each item's Details action. ⌃⌥⌘C opens the strip from anywhere.
 
-  <img src="screenshots/touch-bar.gif" alt="The Touch Bar strip: clips arriving and their previews, the readout's details, Shrink, an app's CPU cap and memory line">
+  <img src="screenshots/touch-bar.gif" alt="Culpmit's Touch Bar strip on a MacBook Pro keyboard: the readout in colour, switches, clips and their previews, Shrink's slider, an app capped and another idled">
 
 - **Everything off:** one click in the menu turns every switch and cap off and wakes idled apps; Everything back turns on what was on.
 
