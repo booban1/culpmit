@@ -1,5 +1,3 @@
-<p align="center"><img src="screenshots/icon.png" width="128" alt="Culpmit icon"></p>
-
 # Culpmit
 
 **Culprit Limiter** for Intel Macs that run hot.
