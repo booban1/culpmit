@@ -28,11 +28,17 @@ for i in {1..7}; do
   cp "TestLoad/Load $i.icns" "$helper/Contents/Resources/Load.icns"
 done
 # one lasting signature keeps macOS permissions across builds and updates; ad hoc where the certificate is absent.
-# The self-signed certificate needs zero trust settings: its hash alone fixes the app's identity.
+# The self-signed certificate needs zero trust settings: its hash alone fixes the app's identity. It lives in its own
+# keychain file, unlocked here, so signing raises zero dialogs.
 # The test apps are signed first, as the app's own signature covers them.
-identity=$(security find-identity -p codesigning 2>/dev/null | awk '/"Culpmit Signer"/ { print $2; exit }')
-for helper in "$app/Contents/Helpers/"*.app; do codesign --force --sign "${identity:--}" "$helper"; done
-codesign --force --sign "${identity:--}" "$app"
+keychain="$HOME/Library/Keychains/culpmit-signing.keychain-db"
+sign=(--sign -)
+if [[ -f $keychain ]] && security unlock-keychain -p "" "$keychain" 2>/dev/null; then
+  identity=$(security find-identity -p codesigning "$keychain" | awk '/"Culpmit Signer"/ { print $2; exit }')
+  [[ -n $identity ]] && sign=(--keychain "$keychain" --sign "$identity")
+fi
+for helper in "$app/Contents/Helpers/"*.app; do codesign --force $sign "$helper"; done
+codesign --force $sign "$app"
 echo "Built $app"
 
 if [[ $1 == install ]]; then
