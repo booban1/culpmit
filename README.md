@@ -1,8 +1,8 @@
 # Culpmit
 
-**Culprit Limiter** for Intel Macs that run hot.
+**Culprit Limiter** for Intel Macs that run *hot*.
 
-Culpmit sits in the menu bar with the CPU temperature over the fan speed. When something heats the Mac, it names the app and holds it to a share of the processor, so the fans settle and the work carries on.
+Culpmit sits in the menu bar with the CPU temperature over the fan speed. When something heats the Mac, it names the app and holds it to a share of the processor, so the fans *settle* and the work carries on.
 
 <p align="center"><img src="screenshots/menu.gif" alt="Culpmit's menu on a MacBook Pro: the readout's boxes, Cap and Idle on busy apps, the + row's other apps, Keep history and the Shrink images slider"></p>
 
