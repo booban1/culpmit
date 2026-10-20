@@ -38,7 +38,7 @@ func memoryReading() -> MemoryReading? {
                          pressure: Pressure(rawValue: Int(level)) ?? .normal)
 }
 
-// a process's footprint in bytes, the figure in Activity Monitor's Memory column; macOS shares it for the user's own
+// a process's footprint in bytes, as Activity Monitor's Memory column shows it; readable for this account's processes
 func footprint(_ pid: pid_t) -> Double? {
     var info = rusage_info_v2()
     let result = withUnsafeMutablePointer(to: &info) {

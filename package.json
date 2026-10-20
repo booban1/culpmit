@@ -1,6 +1,6 @@
 {
   "name": "culpmit",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Culprit Limiter for Intel Macs: installs the latest Culpmit release into Applications",
   "bin": { "culpmit": "bin/culpmit.js" },
   "os": ["darwin"],

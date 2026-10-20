@@ -99,15 +99,19 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
     private var slots: [AppSlot] = []
     private var detailHog: Hog?
     private var detailApp: CappedApp?
+    private var hogLabel: NSTextField?
+    private var capIcon: NSButton?
+    private var idleIcon: NSButton?
     private var detailClip: Clips.Item?
     private var preview: NSPanel?
     private var visibility: NSKeyValueObservation?
     private var seenVisible = false
     private var capValue: NSTextField?
+    private var capUse: NSTextField?
+    private var lineUse: NSTextField?
     private var capPower: NSButton?
     private var capSlider: NSSlider?
     private var lineLabel: NSTextField?
-    private var figureTimer: Timer?
     private var refreshCount = 0
 
     // temperature, the fan and CPU load, each with its level's colour
@@ -247,6 +251,7 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
             paintMemory(r.memory)
             return
         }
+        if screen == "hog" || screen == "cap" { return refreshApp() }
         guard screen == "main" else { return }
         refreshCount += 1
         if refreshCount % 3 == 0 { hogs = busiest() }
@@ -708,32 +713,70 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         guard let hog = detailHog else { return NSView() }
         let label = NSTextField(labelWithString: usage(hog.name, hog))
         label.font = .systemFont(ofSize: 13)
+        hogLabel = label
+        capIcon = nil
+        idleIcon = nil
         var views: [NSView] = [NSImageView(image: hogIcon(hog)), label]
         // Culpmit lists itself like any app, with its figures alone: a cap on itself would stop the capping
         if hog.pid != getpid(), hog.app?.bundleIdentifier != nil, hog.app?.bundleURL != nil {
-            views.append(stateIcon("tortoise", on: isCapped(hog), #selector(capDetail)))
+            let icon = stateIcon("tortoise", on: isCapped(hog), #selector(capDetail))
+            capIcon = icon
+            views.append(icon)
         }
-        if let idled = idleState(hog.pid) { views.append(stateIcon("moon.zzz", on: idled, #selector(idleDetail))) }
+        if let idled = idleState(hog.pid) {
+            let icon = stateIcon("moon.zzz", on: idled, #selector(idleDetail))
+            idleIcon = icon
+            views.append(icon)
+        }
         return row(views, spacing: 12)
     }
 
-    // the menu's icons on the bar: a tortoise caps, a moon idles, each red while on
+    // an app's screen stays live: its use, from its busy row or its own reading, and its Cap and Idle boxes each tick
+    private func refreshApp() {
+        let id = detailApp?.id ?? detailHog?.app?.bundleIdentifier
+        let listed = busiest()
+        let held = detailHog.flatMap { hog in listed.first(where: { $0.pid == hog.pid }) }
+            ?? listed.first(where: { id != nil && $0.app?.bundleIdentifier == id })
+        let fresh = held ?? id.flatMap { useOf($0) }
+        if screen == "cap" {
+            detailHog = fresh
+            capUse?.stringValue = usedCPU()
+            lineUse?.stringValue = usedMemory()
+        } else if let fresh {
+            detailHog = fresh
+            hogLabel?.stringValue = usage(fresh.name, fresh)
+            light(capIcon, on: isCapped(fresh))
+        }
+        if let fresh, let idled = idleState(fresh.pid) { light(idleIcon, on: idled) }
+    }
+
+    // the menu's icons on the bar, boxed: a tortoise caps, a moon idles
     private func stateIcon(_ name: String, on: Bool, _ action: Selector) -> NSButton {
-        let button = iconButton(symbol(name, size: 14)!, action)
-        button.contentTintColor = on ? .systemRed : .labelColor
+        let button = NSButton(image: symbol(name, size: 14)!, target: self, action: action)
+        button.title = ""
+        button.imagePosition = .imageOnly
+        button.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        light(button, on: on)
         return button
     }
 
-    @objc private func capDetail() {
-        if let hog = detailHog { capHog(hog.pid) }
-        hogs = busiest()
-        showMain(animated: true)
+    // the box fills while on and stays empty while off
+    private func light(_ button: NSButton?, on: Bool) {
+        button?.isBordered = on
     }
 
+    // a tap flips the cap in place: a free app is capped at half its use, a capped one runs free
+    @objc private func capDetail() {
+        guard let hog = detailHog else { return }
+        if isCapped(hog), let id = hog.app?.bundleIdentifier { setCapOn(id, false) } else { capHog(hog.pid) }
+        light(capIcon, on: isCapped(hog))
+    }
+
+    // a tap idles or wakes in place
     @objc private func idleDetail() {
-        if let hog = detailHog { toggleIdle(hog.pid) }
-        hogs = busiest()
-        showMain(animated: true)
+        guard let hog = detailHog else { return }
+        toggleIdle(hog.pid)
+        light(idleIcon, on: idleState(hog.pid) == true)
     }
 
     // an app's name with what it uses now: its CPU share, then its memory in GB where macOS shares it
@@ -745,97 +788,86 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
 
     // MARK: one capped app: what it uses now, its CPU cap and memory line side by side, and its power switch
 
-    // each part reads its icon, what the app uses now, a dot, then its slider between its least and most; while a knob
-    // moves, the figure shows the limit it sets, and returns to the use a moment after
+    // each part reads its icon, what the app uses now, small, then its slider and the limit it sets
     private func capView() -> NSView {
         guard let app = detailApp else { return NSView() }
-        let (cpuFigure, value) = figure("gauge.with.dots.needle.50percent", usedCPU(), limit: percent(capRange.upperBound * 100))
-        capValue = value
-        let (memoryFigure, lineValue) = figure("memorychip", usedMemory(), limit: lineText(lineRange.upperBound))
-        lineLabel = lineValue
-        let power = iconButton(symbol("power")!, #selector(capPowerTapped))
-        let ends = [end("\(Int(capRange.lowerBound * 100))"), end("\(Int(capRange.upperBound * 100))"),
-                    end("\(Int(lineRange.lowerBound))"), end("\(Int(lineRange.upperBound))")]
-        let dots = [dot(), dot()]
+        let cpuIcon = NSImageView(image: symbol("gauge.with.dots.needle.50percent", size: 13)!)
+        let cpuUse = use(usedCPU(), widest: "100%")
+        capUse = cpuUse
+        let cpuValue = figure(percent(app.level * 100), widest: percent(capRange.upperBound * 100))
+        capValue = cpuValue
+        let memoryIcon = NSImageView(image: symbol("memorychip", size: 13)!)
+        let memoryUse = use(usedMemory(), widest: "99.9 GB")
+        lineUse = memoryUse
+        let memoryValue = figure(lineText(app.line), widest: lineText(lineRange.upperBound))
+        lineLabel = memoryValue
+        // the tortoise caps and frees, its box filled while the cap holds
+        let power = stateIcon("tortoise", on: app.on, #selector(capPowerTapped))
         let appIconView = NSImageView(image: appIcon(path: app.path))
-        var after: [NSView] = [power]
-        // the moon idles the app while it runs, red while it is idled, by hand or for memory
-        if let hog = detailHog, let idled = idleState(hog.pid) { after.append(stateIcon("moon.zzz", on: idled, #selector(idleDetail))) }
+        // the moon idles the app while it runs, its box filled while it is idled, by hand or for memory
+        let moon = stateIcon("moon.zzz", on: false, #selector(idleDetail))
         // Remove comes only after uncap, so taking an app off the list is two deliberate taps
-        if !app.on { after.append(iconButton(symbol("minus.circle")!, #selector(removeDetail))) }
-        // the two sliders share the room the rest leaves: the bar's width less ‹, the gaps and every other part
-        let spacing: CGFloat = 6, groupGap: CGFloat = 18
-        let others = [appIconView, cpuFigure, memoryFigure] + ends + dots + after
-        let room = usableWidth - 50 - others.map { $0.fittingSize.width }.reduce(0, +) - spacing * CGFloat(others.count - 2)
-            - groupGap * 3
-        let width = min(240, max(70, (room / 2).rounded(.down)))
-        let slider = roundSlider(value: app.level, min: capRange.lowerBound, max: capRange.upperBound, width: width,
+        let remove = iconButton(symbol("minus.circle")!, #selector(removeDetail))
+        idleIcon = nil
+        if let hog = detailHog, let idled = idleState(hog.pid) {
+            light(moon, on: idled)
+            idleIcon = moon
+        } else {
+            vanish(moon)
+        }
+        if app.on { vanish(remove) }
+        let slider = roundSlider(value: app.level, min: capRange.lowerBound, max: capRange.upperBound, width: 60,
                                  target: self, action: #selector(capSlid(_:)))
         capSlider = slider
-        let line = roundSlider(value: app.line, min: lineRange.lowerBound, max: lineRange.upperBound, width: width,
+        let line = roundSlider(value: app.line, min: lineRange.lowerBound, max: lineRange.upperBound, width: 60,
                                target: self, action: #selector(lineSlid(_:)))
-        for v in [power, cpuFigure, slider, memoryFigure, line] + ends + dots { v.alphaValue = app.on ? 1 : 0.4 }
+        for v in [cpuIcon, slider, cpuValue, memoryIcon, line, memoryValue] { v.alphaValue = app.on ? 1 : 0.4 }
         slider.isEnabled = app.on
         line.isEnabled = app.on
         capPower = power
-        let stack = row([appIconView, cpuFigure, dots[0], ends[0], slider, ends[1], memoryFigure, dots[1], ends[2], line, ends[3]] + after,
-                        spacing: spacing)
+        let stack = row([appIconView, cpuIcon, cpuUse, slider, cpuValue, memoryIcon, memoryUse, line, memoryValue, power, moon,
+                         remove], spacing: 6)
         // clear gaps between the app, its CPU group, its memory group and its buttons, so each icon reads with its own group
-        for view in [appIconView, ends[1], ends[3]] { stack.setCustomSpacing(groupGap, after: view) }
+        for view in [appIconView, cpuValue, memoryValue] { stack.setCustomSpacing(18, after: view) }
+        // the sliders share what the row leaves to the bar's end: the bar less ‹ and the two gaps beside it
+        let spare = usableWidth - 50 - stack.fittingSize.width
+        if spare > 0 {
+            for s in [slider, line] { s.constraints.first { $0.firstAttribute == .width }?.constant += (spare / 2).rounded(.down) }
+        }
         return stack
     }
 
-    // an icon hugging its figure, pressed to the right of a box as wide as the wider of the two things it shows here,
-    // the use now and the highest limit while a knob moves: the figure meets its dot, and the little spare width falls
-    // before the icon, in the gap between groups
-    private func figure(_ name: String, _ text: String, limit: String) -> (NSView, NSTextField) {
-        let icon = NSImageView(image: symbol(name, size: 13)!)
-        let label = NSTextField(labelWithString: limit)
+    // a figure after its slider, as wide as the widest it shows, so the row holds still as it changes
+    private func figure(_ text: String, widest: String) -> NSTextField {
+        let label = NSTextField(labelWithString: widest)
         label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        let widest = label.fittingSize.width
+        let width = label.fittingSize.width
         label.stringValue = text
-        let width = ceil(icon.fittingSize.width + 4 + max(widest, label.fittingSize.width))
-        let box = NSStackView()
-        box.orientation = .horizontal
-        box.spacing = 4
-        box.addView(icon, in: .trailing)
-        box.addView(label, in: .trailing)
-        box.widthAnchor.constraint(equalToConstant: width).isActive = true
-        return (box, label)
+        label.widthAnchor.constraint(equalToConstant: ceil(max(width, label.fittingSize.width))).isActive = true
+        return label
     }
 
-    private func usedCPU() -> String { detailHog.map { percent($0.cpu) } ?? "–" }
-    private func usedMemory() -> String { detailHog.map { $0.memory > 0 ? gigabytes($0.memory) : "–" } ?? "–" }
+    // an absent button keeps its place, unseen and untouchable, so the rest of the row holds still
+    private func vanish(_ button: NSButton) {
+        button.alphaValue = 0
+        button.isEnabled = false
+    }
 
-    // a slider's least or most, small and soft beside it
-    private func end(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
+    // what the app uses now, small and soft after its icon, as wide as the widest it shows
+    private func use(_ text: String, widest: String) -> NSTextField {
+        let label = figure(text, widest: widest)
         label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         label.textColor = .secondaryLabelColor
         return label
     }
 
-    private func dot() -> NSTextField {
-        let label = NSTextField(labelWithString: "·")
-        label.font = .systemFont(ofSize: 13)
-        return label
-    }
-
-    // the figures return to what the app uses a moment after a knob stops
-    private func settleFigures() {
-        figureTimer?.invalidate()
-        figureTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            guard let self, self.screen == "cap" else { return }
-            self.capValue?.stringValue = self.usedCPU()
-            self.lineLabel?.stringValue = self.usedMemory()
-        }
-    }
+    private func usedCPU() -> String { detailHog.map { percent($0.cpu) } ?? "–" }
+    private func usedMemory() -> String { detailHog.map { $0.memory > 0 ? gigabytes($0.memory) : "–" } ?? "–" }
 
     @objc private func lineSlid(_ sender: NSSlider) {
         guard let app = detailApp else { return }
         let line = snapLine(sender.doubleValue)
         lineLabel?.stringValue = lineText(line)
-        settleFigures()
         guard line != app.line else { return }
         detailApp?.memoryLine = line
         setMemoryLine(app.id, line)
@@ -845,7 +877,6 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         guard let app = detailApp else { return }
         let level = (sender.doubleValue * 20).rounded() / 20
         capValue?.stringValue = percent(level * 100)
-        settleFigures()
         guard level != app.level else { return }
         detailApp?.level = level
         setCapLevel(app.id, level)

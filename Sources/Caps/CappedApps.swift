@@ -18,8 +18,8 @@ struct CappedApp: Codable {
 // it free
 let capRange = 0.05...0.8
 
-// the memory line in whole GB, from a sixteenth of the Mac's memory (2 GB on 32 GB; 1 GB at least) to three
-// quarters of it; a new app's line sits at half
+// the memory line in whole GB, from a sixteenth of the Mac's memory (1 GB at least) to three quarters of it; a new
+// app's line sits at half
 let ramGB = Double(ProcessInfo.processInfo.physicalMemory) / gib
 let lineRange = max(1, (ramGB / 16).rounded())...(ramGB * 0.75).rounded(.down)
 func snapLine(_ gb: Double) -> Double { min(lineRange.upperBound, max(lineRange.lowerBound, gb.rounded())) }

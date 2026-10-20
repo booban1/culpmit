@@ -6,7 +6,7 @@ let store = UserDefaults.standard
 
 let threads = Double(ProcessInfo.processInfo.activeProcessorCount)
 
-// the model identifier, such as MacBookPro16,1 or Macmini8,1
+// the model identifier
 let machineModel: String = {
     var size = 0
     sysctlbyname("hw.model", nil, &size, nil, 0)

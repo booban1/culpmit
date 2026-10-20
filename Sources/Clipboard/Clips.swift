@@ -78,7 +78,7 @@ final class Clips {
         if items.count > 10 { items.removeLast(items.count - 10) }
     }
 
-    // a pick from history is our own write: the clip goes on the clipboard and the list stays exactly as it was
+    // a pick from history is Culpmit's own write: the clip goes on the clipboard and the list stays exactly as it was
     func copy(_ item: Item) {
         pb.clearContents()
         switch item {
