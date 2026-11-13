@@ -2,9 +2,7 @@
 
 **Culprit Limiter** for Intel Macs that run *hot*.
 
-Culpmit sits in the menu bar with the CPU temperature over the fan speed. When something heats the Mac, it names the app and holds it to a share of the processor, so the fans *settle* and the work carries on.
-
-The full guide: [How to use Culpmit](https://simonbooban.com/resources/how-to-use-culpmit).
+Culpmit sits in the menu bar with the CPU temperature over the fan speed. When something heats the Mac, it names the app and holds it to a share of the processor, so the fans *settle* and the work carries on. One switch adds Uselim for Claude's usage limits, and [the guide](https://simonbooban.com/resources/how-to-use-culpmit) walks through each part.
 
 <p align="center"><img src="screenshots/menu.gif" alt="Culpmit's menu on a MacBook Pro, top to foot: the readout's boxes, Cap and Idle on busy apps and the + row, capped apps with their sliders, the clipboard history, the switches, the alert lines, and Local servers, Claude limits, Touch Bar and Open at login"></p>
 
