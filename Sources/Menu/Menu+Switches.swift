@@ -69,6 +69,7 @@ extension Menu {
         case "touchBar":
             store.set(on, forKey: key)
             on ? strip.show() : strip.hide()
+        case "claudeLimits": setClaude(on)
         default: break
         }
     }

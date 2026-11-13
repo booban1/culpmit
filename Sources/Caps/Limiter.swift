@@ -16,6 +16,14 @@ final class Limiter {
         return Double(t.numer) / Double(t.denom)
     }()
 
+    // processes every limiter leaves running, such as a local model and the shells around it
+    private static let sparedLock = NSLock()
+    private static var sparedPids: Set<pid_t> = []
+    static var spared: Set<pid_t> {
+        get { sparedLock.lock(); defer { sparedLock.unlock() }; return sparedPids }
+        set { sparedLock.lock(); sparedPids = newValue; sparedLock.unlock() }
+    }
+
     var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return active }
 
     var root: pid_t { lock.lock(); defer { lock.unlock() }; return tracked }
@@ -122,7 +130,13 @@ final class Limiter {
         while keepGoing() {
             if now() - scanned > 1e9 || list.isEmpty {
                 guard kill(root, 0) == 0 else { break }
-                list = Limiter.tree(of: root)
+                // a process leaving the list leaves running
+                if paused {
+                    for p in list { kill(p, SIGCONT) }
+                    paused = false
+                }
+                let spared = Limiter.spared
+                list = Limiter.tree(of: root).filter { !spared.contains($0) }
                 lock.lock(); members = list; lock.unlock()
                 let alive = Set(list)
                 usage = usage.filter { alive.contains($0.key) }

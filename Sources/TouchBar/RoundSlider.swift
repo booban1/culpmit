@@ -16,10 +16,14 @@ func roundSlider(value: Double, min: Double, max: Double, width: CGFloat, target
     return slider
 }
 
-// the track and knob drawn by hand, since the Touch Bar's own slider look belongs to its slider items
+// the track and knob drawn by hand, since the Touch Bar's own slider look belongs to its slider items; the track runs
+// edge to edge and the knob stops inside it
 final class RoundSliderCell: NSSliderCell {
+    override var knobThickness: CGFloat { 16 }
+
     override func drawBar(inside rect: NSRect, flipped: Bool) {
-        let track = NSRect(x: rect.minX, y: rect.midY - 2.5, width: rect.width, height: 5)
+        let full = controlView?.bounds ?? rect
+        let track = NSRect(x: full.minX, y: rect.midY - 2.5, width: full.width, height: 5)
         NSColor(white: 1, alpha: 0.28).setFill()
         NSBezierPath(roundedRect: track, xRadius: 2.5, yRadius: 2.5).fill()
         var filled = track

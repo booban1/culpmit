@@ -25,6 +25,36 @@ if CommandLine.arguments.contains("--touchbar-test") {
     exit(0)
 }
 
+// "--uselim-install <zip>" runs the Claude limits switch's install from a release zip on disk (its .sha256 beside it),
+// printing each step, the way the switch does it from GitHub
+if let at = CommandLine.arguments.firstIndex(of: "--uselim-install") {
+    let installer = UselimInstaller()
+    if at + 1 < CommandLine.arguments.count { installer.localZip = URL(fileURLWithPath: CommandLine.arguments[at + 1]) }
+    var finished = false
+    installer.changed = {
+        switch installer.phase {
+        case .working(let words): print("working:", words)
+        case .stopped(let words):
+            print("stopped:", words)
+            finished = true
+        case .needsClaude:
+            print("needs Claude Code")
+            finished = true
+        case .idle:
+            print("done, Uselim \(installer.version ?? "?")", installer.isRunning ? "running" : "closed")
+            finished = installer.version != nil
+        }
+    }
+    print(installer.isPresent ? "Uselim present: setup alone" : "Uselim absent: the full install")
+    installer.turnOn()
+    // a timer keeps the run loop turning while the downloads and Uselim's setup report back, five minutes at most
+    let keepAlive = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in }
+    let deadline = Date().addingTimeInterval(300)
+    while !finished, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.2)) }
+    keepAlive.invalidate()
+    exit(finished ? 0 : 1)
+}
+
 if CommandLine.arguments.contains("--test-alert") {
     Alerts().post("test", title: "Culpmit", body: "Notifications reach you. Heat alerts will look like this.")
     RunLoop.main.run(until: Date().addingTimeInterval(2))

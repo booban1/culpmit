@@ -56,6 +56,12 @@ final class Updater {
         latest { found in
             guard let found else { return finish(.stopped("GitHub is out of reach right now. Try Update again later.")) }
             guard newer(found.version, than: self.installed) else { return finish(.upToDate(found.version)) }
+            // the swap moves this copy out of its folder, so that folder must take writes from this account; a standard
+            // user's account meets an /Applications that only an administrator changes
+            let folder = (Bundle.main.bundlePath as NSString).deletingLastPathComponent
+            guard FileManager.default.isWritableFile(atPath: folder) else {
+                return finish(.stopped("Updating Culpmit in \(folder) needs an administrator account."))
+            }
             store.set(found.version, forKey: "updatingTo")
             note("update: installing \(found.version) over \(self.installed)")
             report(.installing(found.version))

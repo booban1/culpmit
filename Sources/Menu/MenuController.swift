@@ -17,6 +17,7 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
     let updater = Updater()
     let figma = FigmaSocket()
     let strip = TouchBarStrip()
+    let uselim = UselimInstaller()
     var stripKey: HotKey?
     let busy = BusyList()
     var apps = loadApps()
@@ -53,6 +54,11 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
     var lastMemoryAlert = Date.distantPast
     // apps idled for memory, by pid with their bundle ID, and when each capped app last woke from it
     var autoIdled: [pid_t: String] = [:]
+    var modelRun = false
+    var modelBusyAt: Date?
+    var modelHeld: Set<pid_t> = []
+    var modelIdled: Set<pid_t> = []
+    var modelCaps: [pid_t: Limiter] = [:]
     var autoWoken: [String: Date] = [:]
 
     // live parts of the open menu
@@ -81,12 +87,17 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
     var switches: [String: NSSwitch] = [:]
     var historyMenuItem: NSMenuItem?
     var historyShown: [Clips.Item] = []
+    var historyMark: Int?
     var serversMenuItem: NSMenuItem?
     var serversShown: [LocalServer] = []
+    var claudeRow: NSMenuItem?
+    var claudeLine: NSTextField?
+    let keyReturn = KeyReturn()
 
     override init() {
         super.init()
         menu.delegate = self
+        keyReturn.main = menu
         item.menu = menu
         saveApps(apps)
         shrinker.limit = store.double(forKey: "shotLimit")
@@ -112,7 +123,9 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
         if ["heatAlerts", "cpuAlerts", "memoryAlerts"].contains(where: store.bool(forKey:)) { alerts.ask() }
         if store.bool(forKey: "figmaSocket") { figma.start() }
         setUpStrip()
+        setUpClaude()
         watchIdled()
+        settleModelRun()
         announceUpdate()
 
         let center = NSWorkspace.shared.notificationCenter
@@ -143,9 +156,19 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
         }
         settleTestRun()
         for a in apps { applyApp(a.id) }
+        restoreEverythingNote()
         refreshBar()
         every(1) { [weak self] in self?.refreshBar() }
         updater.check()
+    }
+
+    // Everything off left a note of the switches and caps it turned off; the feature is gone, so a Mac that still
+    // holds the note gets them back once, as Everything back did, and each switch carries on by itself from there
+    func restoreEverythingNote() {
+        guard let keys = store.array(forKey: "everythingBefore") as? [String] else { return }
+        for key in keys { apply(key, true) }
+        store.removeObject(forKey: "everythingBefore")
+        note("everything: restored \(keys.count) switches and caps from the last Everything off")
     }
 
     func every(_ seconds: TimeInterval, _ work: @escaping () -> Void) {
@@ -155,6 +178,7 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
 
     func shutdown() {
         stopTest()
+        if modelRun { endModelRun() }
         for l in limiters.values { l.stop() }
         for l in idlers.values { l.stop() }
         awake.set(false)
@@ -177,6 +201,7 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
         checkHeat(temp)
         checkLoad()
         checkMemory()
+        checkModels()
         strip.refresh()
     }
 
@@ -205,6 +230,7 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         refreshServers()
+        uselim.readState()
         menu.removeAllItems()
         kit.reset()
         switches.removeAll()
@@ -248,5 +274,6 @@ final class Menu: NSObject, NSMenuDelegate, NSApplicationDelegate {
         tickSwitches()
         tickHistory()
         tickServers()
+        tickClaude()
     }
 }

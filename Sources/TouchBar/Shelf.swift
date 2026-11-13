@@ -5,8 +5,8 @@ import AppKit
 
 final class Shelf: NSObject, NSScrubberDataSource, NSScrubberFlowLayoutDelegate {
     enum Entry {
-        case text(String)
-        case picture(NSImage)
+        case text(String, mark: Bool)
+        case picture(NSImage, mark: Bool)
         case icon(NSImage, dim: Bool, mark: Bool, label: String)
     }
 
@@ -109,7 +109,7 @@ final class Shelf: NSObject, NSScrubberDataSource, NSScrubberFlowLayoutDelegate 
 
     private func size(at i: Int) -> NSSize {
         switch entries[i] {
-        case .text(let s): return NSSize(width: TextItem.width(s), height: 30)
+        case .text(let s, _): return NSSize(width: TextItem.width(s), height: 30)
         case .picture: return NSSize(width: 40, height: 30)
         case .icon: return NSSize(width: 30, height: 30)
         }
@@ -129,14 +129,16 @@ final class Shelf: NSObject, NSScrubberDataSource, NSScrubberFlowLayoutDelegate 
 
     private func itemView(_ scrubber: NSScrubber, _ index: Int) -> NSScrubberItemView {
         switch entries[index] {
-        case .text(let s):
+        case .text(let s, let mark):
             let v = scrubber.makeItem(withIdentifier: textID, owner: nil) as? TextItem ?? TextItem(frame: .zero)
             v.label.stringValue = s
+            v.dot.isHidden = !mark
             v.setAccessibilityLabel(s)
             return v
-        case .picture(let image):
+        case .picture(let image, let mark):
             let v = scrubber.makeItem(withIdentifier: pictureID, owner: nil) as? PictureItem ?? PictureItem(frame: .zero)
             v.picture.image = image
+            v.dot.isHidden = !mark
             v.setAccessibilityLabel("Image")
             return v
         case .icon(let image, let dim, let mark, let label):
@@ -167,36 +169,61 @@ final class Shelf: NSObject, NSScrubberDataSource, NSScrubberFlowLayoutDelegate 
     }
 }
 
-// a text chip
+// the small orange dot that marks an item, centred beneath it
+private func place(_ dot: NSView, under item: NSView) {
+    dot.wantsLayer = true
+    dot.layer?.backgroundColor = NSColor.systemOrange.cgColor
+    dot.layer?.cornerRadius = 1.5
+    dot.translatesAutoresizingMaskIntoConstraints = false
+    item.addSubview(dot)
+    NSLayoutConstraint.activate([
+        dot.centerXAnchor.constraint(equalTo: item.centerXAnchor),
+        dot.bottomAnchor.constraint(equalTo: item.bottomAnchor),
+        dot.widthAnchor.constraint(equalToConstant: 3),
+        dot.heightAnchor.constraint(equalToConstant: 3),
+    ])
+}
+
+// a text chip, 24 pt tall, with room beneath it for the dot
 private final class TextItem: NSScrubberItemView {
     static let font = NSFont.systemFont(ofSize: 11)
     static func width(_ s: String) -> CGFloat { min(150, ceil((s as NSString).size(withAttributes: [.font: font]).width) + 28) }
 
     let label = NSTextField(labelWithString: "")
+    let dot = NSView()
+    private let chip = NSView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 1, alpha: 0.2).cgColor
-        layer?.cornerRadius = 6
+        chip.wantsLayer = true
+        chip.layer?.backgroundColor = NSColor(white: 1, alpha: 0.2).cgColor
+        chip.layer?.cornerRadius = 6
+        chip.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(chip)
         label.font = TextItem.font
         label.alignment = .center
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
+        chip.addSubview(label)
+        place(dot, under: self)
         NSLayoutConstraint.activate([
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            chip.topAnchor.constraint(equalTo: topAnchor, constant: 1.5),
+            chip.heightAnchor.constraint(equalToConstant: 24),
+            chip.leadingAnchor.constraint(equalTo: leadingAnchor),
+            chip.trailingAnchor.constraint(equalTo: trailingAnchor),
+            label.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: chip.leadingAnchor, constant: 10),
+            label.trailingAnchor.constraint(equalTo: chip.trailingAnchor, constant: -10),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("Shelf items come from code") }
 }
 
-// a screenshot thumbnail
+// a screenshot thumbnail, level with the chips, with room beneath it for the dot
 private final class PictureItem: NSScrubberItemView {
     let picture = NSImageView()
+    let dot = NSView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -206,9 +233,10 @@ private final class PictureItem: NSScrubberItemView {
         picture.layer?.masksToBounds = true
         picture.translatesAutoresizingMaskIntoConstraints = false
         addSubview(picture)
+        place(dot, under: self)
         NSLayoutConstraint.activate([
             picture.centerXAnchor.constraint(equalTo: centerXAnchor),
-            picture.centerYAnchor.constraint(equalTo: centerYAnchor),
+            picture.topAnchor.constraint(equalTo: topAnchor, constant: 2.5),
             picture.widthAnchor.constraint(equalToConstant: 36),
             picture.heightAnchor.constraint(equalToConstant: 22),
         ])
@@ -217,7 +245,7 @@ private final class PictureItem: NSScrubberItemView {
     required init?(coder: NSCoder) { fatalError("Shelf items come from code") }
 }
 
-// an app icon, with the faintest dot beneath it when marked
+// an app icon, with the dot beneath it when marked
 private final class IconItem: NSScrubberItemView {
     let picture = NSImageView()
     let dot = NSView()
@@ -227,20 +255,12 @@ private final class IconItem: NSScrubberItemView {
         picture.imageScaling = .scaleProportionallyUpOrDown
         picture.translatesAutoresizingMaskIntoConstraints = false
         addSubview(picture)
-        dot.wantsLayer = true
-        dot.layer?.backgroundColor = NSColor(white: 1, alpha: 0.35).cgColor
-        dot.layer?.cornerRadius = 1.5
-        dot.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(dot)
+        place(dot, under: self)
         NSLayoutConstraint.activate([
             picture.centerXAnchor.constraint(equalTo: centerXAnchor),
             picture.centerYAnchor.constraint(equalTo: centerYAnchor),
             picture.widthAnchor.constraint(equalToConstant: 26),
             picture.heightAnchor.constraint(equalToConstant: 26),
-            dot.centerXAnchor.constraint(equalTo: centerXAnchor),
-            dot.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
-            dot.widthAnchor.constraint(equalToConstant: 3),
-            dot.heightAnchor.constraint(equalToConstant: 3),
         ])
     }
 

@@ -4,7 +4,7 @@ import AppKit
 // its slider, and a seventh fills memory until it runs short, capped with its memory line at the least, so Busy apps,
 // the Touch Bar, the heat alert, the memory alert and the memory line show Culpmit at work. For that time the switches
 // it exercises hold on; at the end the apps quit and leave Capped apps, and each switch returns to where it stood.
-// Switched back on within a minute of an early stop, by hand, by Everything off, or by Culpmit quitting or crashing,
+// Switched back on within a minute of an early stop, by hand, or by Culpmit quitting or crashing,
 // the same run picks up where it was.
 
 let testPrefix = "com.simonbooban.culpmit.test"

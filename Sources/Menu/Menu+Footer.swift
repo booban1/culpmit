@@ -1,16 +1,16 @@
 import AppKit
 
-// The last sections: local servers, Touch Bar, open at login, then Update and Quit
+// The last sections: local servers, Claude limits, Touch Bar, open at login, then Update and Quit
 
 extension Menu {
     func addFooterSection() {
         menu.addItem(serversItem())
+        menu.addItem(claudeItem())
         if strip.available {
             let touchBar = toggle("Touch Bar", "touchBar", strip.isShown)
             touchBar.view?.toolTip = "⌃⌥⌘C"
             menu.addItem(touchBar)
         }
-        menu.addItem(everythingItem())
         menu.addItem(toggle("Open at login", "login", openAtLogin))
 
         let update = NSMenuItem(title: updater.busy ? "Updating" + loadingDots(updateDots) : "Update Culpmit",

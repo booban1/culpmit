@@ -24,6 +24,7 @@ extension Menu {
             menu.addItem(slot.row.item)
         }
         let rest = NSMenu()
+        rest.delegate = keyReturn
         for _ in 0..<6 {
             let slot = makeHogSlot()
             moreSlots.append(slot)
@@ -186,5 +187,19 @@ extension Menu {
             capHalf(pid)
         }
         tick()
+    }
+}
+
+// The + row's submenu carries Cap and Idle buttons, so macOS hands it the key window while it shows; once it closes,
+// the key goes back to the main menu, so the main menu's switches keep their colour and Escape still closes it
+final class KeyReturn: NSObject, NSMenuDelegate {
+    weak var main: NSMenu?
+
+    func menuDidClose(_ menu: NSMenu) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let window = self?.main?.items.lazy.compactMap({ $0.view?.window }).first,
+                  window.isVisible, !window.isKeyWindow else { return }
+            window.makeKey()
+        }
     }
 }

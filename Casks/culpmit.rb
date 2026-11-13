@@ -1,6 +1,6 @@
 cask "culpmit" do
-  version "1.0.2"
-  sha256 "7e41d34a2df67af280292406ff398523a9738817b4e9b6ea8f0097da8539e9f8"
+  version "1.0.3"
+  sha256 "3a408218c49abd5c05cc39389da38402393bf497633aa8f73f8ba74548a8bdea"
 
   url "https://github.com/booban1/culpmit/releases/download/v#{version}/Culpmit-#{version}.zip"
   name "Culpmit"

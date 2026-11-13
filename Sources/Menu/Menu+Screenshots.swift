@@ -3,6 +3,9 @@ import AppKit
 // Clipboard section: history and its switch, then Shrink images in one row, its image size and approx size on a slider
 // while it is on
 
+private let currentDot = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "On the clipboard")?
+    .withSymbolConfiguration(.init(pointSize: 6, weight: .regular))
+
 extension Menu {
     func addScreenshotsSection() {
         // the heading carries Keep history and its switch at its far right
@@ -16,9 +19,10 @@ extension Menu {
         let history = NSMenuItem(title: "Clipboard history", action: nil, keyEquivalent: "")
         history.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
         history.submenu = historyMenu()
-        history.isHidden = clips.history.isEmpty
+        history.isHidden = clips.items.isEmpty
         historyMenuItem = history
         historyShown = clips.items
+        historyMark = clips.marked
         menu.addItem(history)
         let value = kit.valueField(shrinkText(shrinker.limit), template: shrinkText(2000))
         limitLabel = value
@@ -31,10 +35,11 @@ extension Menu {
     func shrinkText(_ v: Double) -> String { px(v) + " · " + megapixels(v) }
 
     func tickHistory() {
-        guard clips.items != historyShown else { return }
+        guard clips.items != historyShown || clips.marked != historyMark else { return }
         historyShown = clips.items
+        historyMark = clips.marked
         historyMenuItem?.submenu = historyMenu()
-        show(historyMenuItem, !clips.history.isEmpty)
+        show(historyMenuItem, !clips.items.isEmpty)
     }
 
     @objc func slid(_ sender: NSSlider) {
@@ -45,9 +50,11 @@ extension Menu {
         limitLabel?.stringValue = shrinkText(v)
     }
 
+    // every kept clip; a dot beside the one on the clipboard when a pick made it other than the first
     func historyMenu() -> NSMenu {
         let sub = NSMenu()
-        for (i, clip) in clips.history.enumerated() {
+        let marked = clips.marked
+        for (i, clip) in clips.items.enumerated() {
             let m: NSMenuItem
             switch clip {
             case .text(let s):
@@ -67,6 +74,10 @@ extension Menu {
             }
             m.target = self
             m.tag = i
+            if i == marked {
+                m.onStateImage = currentDot
+                m.state = .on
+            }
             sub.addItem(m)
         }
         sub.addItem(.separator())
@@ -77,7 +88,7 @@ extension Menu {
     }
 
     @objc func copyClip(_ sender: NSMenuItem) {
-        let list = clips.history
+        let list = clips.items
         if list.indices.contains(sender.tag) { clips.copy(list[sender.tag]) }
     }
 

@@ -8,8 +8,9 @@ final class Clips {
         case image(Data, NSSize)
     }
 
+    // newest first, the one on the clipboard now included
     private(set) var items: [Item] = []
-    private var headIsCurrent = false
+    private var current: Item?
     private let pb = NSPasteboard.general
     private var seen: Int
     private var changedAt: Date?
@@ -23,11 +24,16 @@ final class Clips {
 
     var isOn: Bool { timer != nil }
 
-    // the list to show; the item on the clipboard right now stays out of it
-    var history: [Item] { headIsCurrent ? Array(items.dropFirst()) : items }
+    // where the item on the clipboard now sits, once a pick has made it other than the first
+    var marked: Int? {
+        guard let current, let i = items.firstIndex(of: current), i > 0 else { return nil }
+        return i
+    }
 
+    // what is on the clipboard already joins the list as the current item
     func start() {
         guard timer == nil else { return }
+        capture()
         timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in self?.tick() }
     }
 
@@ -35,11 +41,11 @@ final class Clips {
         timer?.invalidate()
         timer = nil
         items.removeAll()
-        headIsCurrent = false
+        current = nil
     }
 
     // clears all but the item on the clipboard now
-    func clear() { items = headIsCurrent ? Array(items.prefix(1)) : [] }
+    func clear() { items = current.map { [$0] } ?? [] }
 
     private func tick() {
         let c = pb.changeCount
@@ -61,7 +67,7 @@ final class Clips {
 
     private func capture() {
         let types = Set(pb.types?.map(\.rawValue) ?? [])
-        guard !types.isEmpty, types.isDisjoint(with: secret) else { headIsCurrent = false; return }
+        guard !types.isEmpty, types.isDisjoint(with: secret) else { current = nil; return }
         var item: Item?
         if types.isSubset(of: shotTypes) {
             item = image()
@@ -71,14 +77,15 @@ final class Clips {
             // an image from another device travels only when pasted, so the list keeps the Mac's own
             item = image()
         }
-        guard let item else { headIsCurrent = false; return }
+        guard let item else { current = nil; return }
         items.removeAll { $0 == item }
         items.insert(item, at: 0)
-        headIsCurrent = true
+        current = item
         if items.count > 10 { items.removeLast(items.count - 10) }
     }
 
-    // a pick from history is Culpmit's own write: the clip goes on the clipboard and the list stays exactly as it was
+    // a pick from history is Culpmit's own write: the clip goes on the clipboard, the list stays exactly as it was and the
+    // pick is the current one
     func copy(_ item: Item) {
         pb.clearContents()
         switch item {
@@ -87,5 +94,6 @@ final class Clips {
         }
         seen = pb.changeCount
         changedAt = nil
+        current = item
     }
 }

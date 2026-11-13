@@ -1,7 +1,8 @@
 import AppKit
+import IOKit
 
-// Culpmit on the Touch Bar: a Control Strip icon that opens a strip of values, switches, clipboard items,
-// capped apps and the busiest apps. The Control Strip calls are private to macOS, so each is checked before use.
+// Culpmit on the Touch Bar: a Control Strip icon that opens a strip of values, Claude's limits, switches, clipboard
+// items, capped apps and the busiest apps. The Control Strip calls are private to macOS, so each is checked before use.
 
 private let stripID = NSTouchBarItem.Identifier("com.simonbooban.culpmit.strip")
 private let mainID = NSTouchBarItem.Identifier("com.simonbooban.culpmit.main")
@@ -64,6 +65,39 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         l.cell?.setAccessibilityCustomActions(details)
         return l
     }()
+    // Claude's session and week beside the asterisk, the dot while a chat waits; a tap or hold opens their screen
+    private lazy var claudeIcon: NSImageView = {
+        let v = NSImageView(image: symbol("asterisk", size: 13) ?? NSImage())
+        v.contentTintColor = .labelColor
+        return v
+    }()
+    private lazy var claudeLabel: NSTextField = {
+        let l = NSTextField(labelWithString: "88% · 88%")
+        l.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        // the screen, reachable by VoiceOver and scripts too; the stack around it is invisible to them
+        let details = [NSAccessibilityCustomAction(name: "Details") { [weak self] in
+            self?.openClaude()
+            return true
+        }]
+        l.setAccessibilityCustomActions(details)
+        l.cell?.setAccessibilityCustomActions(details)
+        l.setAccessibilityLabel("Claude limits")
+        return l
+    }()
+    private let claudeDot = Dot()
+    private lazy var claudeGroup: NSStackView = {
+        let s = row([claudeIcon, claudeLabel, claudeDot], spacing: 4)
+        s.addGestureRecognizer(holdRecognizer(#selector(holdClaude(_:))))
+        let tap = NSClickGestureRecognizer(target: self, action: #selector(tapClaude))
+        tap.allowedTouchTypes = .direct
+        s.addGestureRecognizer(tap)
+        return s
+    }()
+    private var claudeNow: Claude?
+    private var claudeShown = false
+    private var claudeFigures: [(kind: String, figure: NSTextField, sub: NSTextField)] = []
+    private var claudeChips: NSStackView?
+    private var claudeChipKey = ""
     private lazy var switchRow: NSStackView = row(switchSet.map { s -> NSView in
         let b = iconButton(symbol(s.symbol)!, #selector(tapSwitch(_:)))
         b.identifier = NSUserInterfaceItemIdentifier(s.key)
@@ -126,6 +160,7 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
     var idleState: (pid_t) -> Bool? = { _ in nil }
     var toggleIdle: (pid_t) -> Void = { _ in }
     var clipItems: () -> [Clips.Item] = { [] }
+    var clipMark: () -> Int? = { nil }
     var copyClip: (Clips.Item) -> Void = { _ in }
     var cappedApps: () -> [CappedApp] = { [] }
     var setCapLevel: (String, Double) -> Void = { _, _ in }
@@ -137,6 +172,8 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
     // the readout's screen: temperature, every fan, CPU load, each with its colour
     var details: () -> [(text: String, tint: NSColor?)] = { [("–", nil), ("–", nil), ("–", nil)] }
     var memory: () -> (used: Double, tint: NSColor?)? = { nil }
+    // Claude's limits and the chats waiting, from Uselim's files; nil leaves the group out
+    var claude: () -> Claude? = { nil }
 
     private let switchSet: [(key: String, symbol: String, on: String, title: String)] = [
         ("awake", "cup.and.saucer", "cup.and.saucer.fill", "Caffeinate"),
@@ -154,8 +191,26 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         appShelf.holdPause = 0
     }
 
+    // the Touch Bar itself, beyond the system's framework, which every Mac carries: its display on the T2's internal
+    // USB, or TouchBarServer running for it, as on the T1 Macs; read once, since the hardware stays as it is
+    static let hasHardware: Bool = {
+        let match = IOServiceMatching("IOUSBHostDevice") as NSMutableDictionary
+        match["IOPropertyMatch"] = ["USB Product Name": "Touch Bar Display"]
+        var found: io_iterator_t = 0
+        if IOServiceGetMatchingServices(kIOMainPortDefault, match, &found) == KERN_SUCCESS {
+            defer { IOObjectRelease(found) }
+            let first = IOIteratorNext(found)
+            if first != 0 {
+                IOObjectRelease(first)
+                return true
+            }
+        }
+        return run("/usr/bin/pgrep", ["-x", "TouchBarServer"]).status == 0
+    }()
+
     var available: Bool {
-        dfr != nil && dlsym(dfr, "DFRElementSetControlStripPresenceForIdentifier") != nil
+        TouchBarStrip.hasHardware
+            && dfr != nil && dlsym(dfr, "DFRElementSetControlStripPresenceForIdentifier") != nil
             && (NSTouchBarItem.self as AnyObject).responds(to: addTray)
             && (NSTouchBar.self as AnyObject).responds(to: present)
     }
@@ -252,11 +307,13 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
             return
         }
         if screen == "hog" || screen == "cap" { return refreshApp() }
+        if screen == "claude" { return refreshClaude() }
         guard screen == "main" else { return }
         refreshCount += 1
         if refreshCount % 3 == 0 { hogs = busiest() }
         rebuildIfChanged()
         readoutLabel.attributedStringValue = readoutText()
+        paintClaude()
         paintToggles()
     }
 
@@ -301,6 +358,7 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         closePreview()
         rebuildIfChanged()
         readoutLabel.attributedStringValue = readoutText()
+        paintClaude()
         paintToggles()
         fill([mainStack], grow: animated ? 1.05 : nil)
     }
@@ -386,14 +444,19 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         order = steady.map(\.pid)
         slots = capped.map { app in AppSlot(capped: app, hog: steady.first { $0.app?.bundleIdentifier == app.id }) }
             + steady.filter { hog in !capped.contains { $0.id == hog.app?.bundleIdentifier } }.map { AppSlot(capped: nil, hog: $0) }
-        clipShelf.show(clips.map(clipKey).joined(separator: "|")) { clips.map(clipEntry) }
+        let mark = clipMark()
+        clipShelf.show(clips.map(clipKey).joined(separator: "|") + "@\(mark ?? -1)") {
+            clips.indices.map { clipEntry(clips[$0], mark: $0 == mark) }
+        }
         appShelf.show(slots.map(slotKey).joined(separator: "|")) { slots.map(slotEntry) }
+        claudeNow = claude()
+        claudeShown = claudeNow != nil
         fitGroups()
-        let next = "\(clips.isEmpty)\(slots.isEmpty)"
+        let next = "\(clips.isEmpty)\(slots.isEmpty)\(claudeShown)"
         guard next != shape else { return }
         if !shape.isEmpty { transition(mainStack, .fade) }
         shape = next
-        let groups: [NSView] = [readoutLabel, switchRow]
+        let groups: [NSView] = [readoutLabel] + (claudeShown ? [claudeGroup] : []) + [switchRow]
             + [(clipShelf, clips.isEmpty), (appShelf, slots.isEmpty)].filter { !$0.1 }.map { $0.0.view }
         for v in mainStack.arrangedSubviews { v.removeFromSuperview() }
         for g in groups { mainStack.addArrangedSubview(g) }
@@ -402,8 +465,9 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
     // the room after the readout and switches, less 10 pt between each pair of groups: apps take what the clipboard
     // leaves, three icons at least, and the clipboard takes the rest
     private func fitGroups() {
-        let groups = 2 + (clips.isEmpty ? 0 : 1) + (slots.isEmpty ? 0 : 1)
-        let shared = usableWidth - readoutLabel.fittingSize.width - switchRow.fittingSize.width - CGFloat(groups - 1) * 10
+        let groups = 2 + (claudeShown ? 1 : 0) + (clips.isEmpty ? 0 : 1) + (slots.isEmpty ? 0 : 1)
+        let shared = usableWidth - readoutLabel.fittingSize.width - (claudeShown ? claudeGroup.fittingSize.width : 0)
+            - switchRow.fittingSize.width - CGFloat(groups - 1) * 10
         let apps = max(threeApps, shared - (clips.isEmpty ? 0 : clipShelf.contentWidth))
         if abs(apps - appShelf.maxWidth) > 0.5 { appShelf.maxWidth = apps }
         let room = max(80, shared - (slots.isEmpty ? 0 : appShelf.shownWidth))
@@ -416,7 +480,7 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         "\(slot.capped?.id ?? "")\(slot.capped?.on ?? false)\(slot.capped?.level ?? 0)\(slot.hog?.pid ?? 0)\(idled(slot))"
     }
 
-    // lit while Culpmit holds the app (capped or idled), dim when it runs free; the faintest dot marks an idled app
+    // lit while Culpmit holds the app (capped or idled), dim when it runs free; a small orange dot marks an idled app
     private func slotEntry(_ slot: AppSlot) -> Shelf.Entry {
         let idle = idled(slot)
         guard let app = slot.capped else {
@@ -432,13 +496,14 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         }
     }
 
-    private func clipEntry(_ clip: Clips.Item) -> Shelf.Entry {
+    // a small orange dot marks the clip on the clipboard when a pick made it other than the first
+    private func clipEntry(_ clip: Clips.Item, mark: Bool) -> Shelf.Entry {
         switch clip {
         case .text(let s):
             let first = (s.split(whereSeparator: \.isNewline).first.map(String.init) ?? s).trimmingCharacters(in: .whitespaces)
-            return .text(first.count > 24 ? String(first.prefix(24)) + "…" : first)
+            return .text(first.count > 24 ? String(first.prefix(24)) + "…" : first, mark: mark)
         case .image(let data, _):
-            return .picture(NSImage(data: data) ?? NSImage())
+            return .picture(NSImage(data: data) ?? NSImage(), mark: mark)
         }
     }
 
@@ -644,6 +709,90 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         label.textColor = m.tint ?? .labelColor
     }
 
+    // MARK: Claude's limits
+
+    // the session and the week, each in its colour, the dot while a chat waits
+    private func paintClaude() {
+        guard claudeShown, let c = claudeNow else { return }
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        let text = NSMutableAttributedString()
+        let ink: NSColor = c.stale ? .secondaryLabelColor : .labelColor
+        for (i, l) in [c.session, c.weekly].compactMap({ $0 }).enumerated() {
+            if i > 0 { text.append(NSAttributedString(string: " · ", attributes: [.font: font, .foregroundColor: ink])) }
+            let tint = c.stale ? ink : (claudeTint(l.percent) ?? ink)
+            text.append(NSAttributedString(string: "\(l.percent)%", attributes: [.font: font, .foregroundColor: tint]))
+        }
+        claudeLabel.attributedStringValue = text
+        claudeDot.isHidden = c.waiting.isEmpty
+    }
+
+    @objc private func holdClaude(_ press: NSPressGestureRecognizer) {
+        guard press.state == .began else { return }
+        openClaude()
+    }
+
+    // the group holds values alone, so a tap opens the same screen as a hold
+    @objc private func tapClaude() {
+        guard screen == "main" else { return }
+        openClaude()
+    }
+
+    private func openClaude() {
+        enter("claude", from: middle(of: claudeGroup), [backButton(), claudeView()])
+    }
+
+    // every limit with its reset and time left, then a chip per chat waiting
+    private func claudeView() -> NSView {
+        claudeFigures = []
+        let groups: [NSView] = (claudeNow?.limits ?? []).map { l in
+            let figure = NSTextField(labelWithString: "")
+            figure.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+            let sub = NSTextField(labelWithString: "")
+            sub.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            sub.textColor = .secondaryLabelColor
+            claudeFigures.append((l.kind, figure, sub))
+            let icon = l.kind == "session" ? "clock" : l.kind == "weekly_all" ? "calendar" : "sparkle"
+            return row([NSImageView(image: symbol(icon, size: 13)!), figure, sub], spacing: 6)
+        }
+        let chips = row([], spacing: 8)
+        claudeChips = chips
+        claudeChipKey = ""
+        refreshClaude()
+        return row(groups + [chips], spacing: 32)
+    }
+
+    private func refreshClaude() {
+        claudeNow = claude()
+        guard let c = claudeNow else { return }
+        let now = Date()
+        for f in claudeFigures {
+            guard let l = c.limits.first(where: { $0.kind == f.kind }) else { continue }
+            f.figure.stringValue = "\(l.percent)%"
+            f.figure.textColor = c.stale ? .secondaryLabelColor : (claudeTint(l.percent) ?? .labelColor)
+            f.sub.stringValue = l.kind == "weekly_scoped" ? claudeWord(l) : (l.resets.map { claudeWhen($0, now: now) } ?? "")
+        }
+        let key = c.waiting.map { "\($0.project)|\($0.kind)" }.joined(separator: ",")
+        guard let chips = claudeChips, key != claudeChipKey else { return }
+        claudeChipKey = key
+        for v in chips.arrangedSubviews { v.removeFromSuperview() }
+        for w in c.waiting { chips.addArrangedSubview(claudeChip(w)) }
+    }
+
+    // a chat waiting: its project in bold, what it waits for in orange
+    private func claudeChip(_ w: ClaudeWait) -> NSView {
+        let line = NSMutableAttributedString(string: w.project, attributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: NSColor.labelColor])
+        line.append(NSAttributedString(string: " · ", attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.labelColor]))
+        line.append(NSAttributedString(string: w.kind.prefix(1).uppercased() + w.kind.dropFirst(),
+                                       attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.systemOrange]))
+        let chip = row([NSTextField(labelWithAttributedString: line)], spacing: 0)
+        chip.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+        chip.wantsLayer = true
+        chip.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.2).cgColor
+        chip.layer?.cornerRadius = 6
+        chip.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        return chip
+    }
+
     @objc private func holdSwitch(_ press: NSPressGestureRecognizer) {
         if press.state == .ended || press.state == .cancelled || press.state == .failed {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.heldSwitch = false }
@@ -750,12 +899,15 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         if let fresh, let idled = idleState(fresh.pid) { light(idleIcon, on: idled) }
     }
 
-    // the menu's icons on the bar, boxed: a tortoise caps, a moon idles
+    // the menu's icons on the bar, boxed: a tortoise caps, a moon idles; the wide tortoise a size smaller, so both sit
+    // with room inside their boxes
     private func stateIcon(_ name: String, on: Bool, _ action: Selector) -> NSButton {
-        let button = NSButton(image: symbol(name, size: 14)!, target: self, action: action)
+        let button = NSButton(image: symbol(name, size: name == "tortoise" ? 12 : 14)!, target: self, action: action)
         button.title = ""
         button.imagePosition = .imageOnly
-        button.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        // the icon keeps its size whether its box fills or empties
+        button.imageScaling = .scaleNone
+        button.widthAnchor.constraint(equalToConstant: 34).isActive = true
         light(button, on: on)
         return button
     }
@@ -826,9 +978,11 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         line.isEnabled = app.on
         capPower = power
         let stack = row([appIconView, cpuIcon, cpuUse, slider, cpuValue, memoryIcon, memoryUse, line, memoryValue, power, moon,
-                         remove], spacing: 6)
+                         remove], spacing: 2)
         // clear gaps between the app, its CPU group, its memory group and its buttons, so each icon reads with its own group
-        for view in [appIconView, cpuValue, memoryValue] { stack.setCustomSpacing(18, after: view) }
+        for view in [appIconView, cpuValue, memoryValue] { stack.setCustomSpacing(8, after: view) }
+        // each slider starts right after the use figure
+        for view in [cpuUse, memoryUse] { stack.setCustomSpacing(0, after: view) }
         // the sliders share what the row leaves to the bar's end: the bar less ‹ and the two gaps beside it
         let spare = usableWidth - 50 - stack.fittingSize.width
         if spare > 0 {
@@ -853,11 +1007,15 @@ final class TouchBarStrip: NSObject, NSTouchBarDelegate {
         button.isEnabled = false
     }
 
-    // what the app uses now, small and soft after its icon, as wide as the widest it shows
+    // what the app uses now, small and soft after its icon, as wide as the widest it shows, less its trailing pad so the
+    // slider sits close
     private func use(_ text: String, widest: String) -> NSTextField {
-        let label = figure(text, widest: widest)
+        let label = NSTextField(labelWithString: widest)
         label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         label.textColor = .secondaryLabelColor
+        let room = label.fittingSize.width
+        label.stringValue = text
+        label.widthAnchor.constraint(equalToConstant: ceil(max(room, label.fittingSize.width)) - 2).isActive = true
         return label
     }
 

@@ -33,12 +33,15 @@ extension Menu {
         }
         strip.capHog = { [weak self] pid in self?.capHalf(pid) }
         strip.memory = { memoryReading().map { ($0.used, memoryLevel($0).tint) } }
+        // Claude's figures ride the strip while the Claude limits switch is on
+        strip.claude = { [weak self] in (self?.claudeOn ?? false) ? claudeReading() : nil }
         strip.idleState = { [weak self] pid in
             guard let self, self.canIdle(pid) else { return nil }
             return self.isIdled(pid)
         }
         strip.toggleIdle = { [weak self] pid in self?.toggleIdle(pid) }
-        strip.clipItems = { [weak self] in self?.clips.history ?? [] }
+        strip.clipItems = { [weak self] in self?.clips.items ?? [] }
+        strip.clipMark = { [weak self] in self?.clips.marked }
         strip.copyClip = { [weak self] item in self?.clips.copy(item) }
         strip.cappedApps = { [weak self] in self?.apps ?? [] }
         strip.setCapLevel = { [weak self] id, level in
