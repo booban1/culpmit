@@ -1,8 +1,8 @@
 # Culpmit
 
-**Culprit Limiter** for Intel Macs that run *hot*.
+**Culprit Limiter** for Intel Macs, Windows PCs and Linux machines that run *hot*.
 
-Culpmit sits in the menu bar with the CPU temperature over the fan speed. When something heats the Mac, it names the app and holds it to a share of the processor, so the fans *settle* and the work carries on. One switch adds Uselim for Claude's usage limits, and [the guide](https://simonbooban.com/resources/how-to-use-culpmit) walks through each part.
+Culpmit sits in the menu bar with the CPU temperature over the fan speed. When something heats the Mac, it names the app and holds it to a share of the processor, so the fans *settle* and the work carries on. One switch adds Uselim for Claude's usage limits, and [the guide](https://simonbooban.com/resources/how-to-use-culpmit) walks through each part. On [Windows](#windows) and [Linux](#linux), Culpmit sits in the tray as two dots.
 
 <p align="center"><img src="screenshots/menu.gif" alt="Culpmit's menu on a MacBook Pro, top to foot: the readout's boxes, Cap and Idle on busy apps and the + row, capped apps with their sliders, the clipboard history, the switches, the alert lines, and Local servers, Claude limits, Touch Bar and Open at login"></p>
 
@@ -80,6 +80,42 @@ Culpmit opens at login and comes back on its own after a crash, with Open at log
 
 Switch Open at login off in its menu, quit it, and move it from Applications to the Trash. Already in the Trash? Delete `~/Library/LaunchAgents/com.simonbooban.culpmit.plist` too. With Homebrew: `brew uninstall --cask culpmit`, which does both.
 
+## Windows
+
+<p align="center"><img src="screenshots/windows.png" width="382" alt="Culpmit's panel on Windows 10: CPU and memory as tiles, busy apps with a tortoise and a moon each, two capped apps with their sliders, Keep awake, Open at login, and the CPU and memory alert lines"></p>
+
+Culpmit sits in the tray beside the clock as two dots, CPU above and memory below, each white, orange at its alert's line and red at 90%. A click opens the panel:
+
+- **Busy apps:** apps using half a core or more, plus the three holding the most memory, each with its CPU share and memory, a tortoise to cap it and a moon to idle it, red while on. Cap sets a ceiling at half of what the app uses at that moment.
+- **Capped apps:** every app you cap, with every process it starts, held to a share of the PC from 5% to 80% through a Windows job object, beside its memory line. A right click on an app removes it.
+- **CPU and memory alerts:** past a line you set, held for a minute, a notification names the busiest or the heaviest app.
+- **Keep awake:** idle sleep held off, letting go on battery below 20%.
+
+### Install on Windows
+
+1. Download the latest `Culpmit-x.y.z-windows.zip` from [Releases](https://github.com/booban1/culpmit/releases).
+2. Open the zip and double-click `Culpmit.exe`: it sets itself up in `%LOCALAPPDATA%\Programs\Culpmit`, joins Settings › Apps, opens at login and starts in the tray.
+3. Windows asks once about an app from a new publisher: click **More info**, then **Run anyway**.
+
+New tray icons wait behind the arrow beside the clock; drag the two dots onto the taskbar to keep them in view. Culpmit needs Windows 10 or 11 and makes zero network calls; its settings and log live in `%LOCALAPPDATA%\Culpmit`. To remove it, use Settings › Apps › Culpmit › Uninstall, or Remove Culpmit… in its panel; every cap lifts on the way out.
+
+## Linux
+
+<p align="center"><img src="screenshots/linux.png" width="380" alt="Culpmit's panel on Linux Mint: CPU and memory as tiles, busy apps with a tortoise and a moon each, yes capped at 50% with its sliders, Keep awake, Open at login, and the alert lines"></p>
+
+Culpmit sits in the panel's tray as two dots, CPU above and memory below. Where the kernel reports the CPU's temperature (coretemp or k10temp), the top dot follows it, and Heat alerts and a temperature tile join the panel; the rest matches Windows. Caps run in your own systemd session: each capped app gets a scope with a CPU quota, and any process outside your session's reach pauses in 100 ms slices to the same share.
+
+### Install on Linux
+
+Download the latest `Culpmit-x.y.z-linux-x64.tar.gz`, or the `arm64` one, from [Releases](https://github.com/booban1/culpmit/releases), then:
+
+```sh
+tar -xzf Culpmit-*-linux-x64.tar.gz
+./culpmit
+```
+
+Culpmit sets itself up in `~/.local/bin`, joins the app menu, opens at login and starts in the tray. It needs a 64-bit machine with systemd and a panel that shows tray icons: Cinnamon on Linux Mint, KDE Plasma, or Ubuntu's GNOME. It makes zero network calls; its settings and log live in `~/.local/share/Culpmit`. To remove it, use Remove Culpmit… in its panel, or `culpmit --remove`.
+
 ## Licence
 
-MIT, see [LICENSE](LICENSE). The chip in the app icon comes from [Tabler Icons](https://tabler.io/icons), also MIT.
+MIT, see [LICENSE](LICENSE). The chip in the app icon comes from [Tabler Icons](https://tabler.io/icons), also MIT; the Windows and Linux panels' icons come from Microsoft's [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons), MIT.

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Culpmit for Windows: one Culpmit.exe on .NET Framework 4.8, which every Windows 10 and 11 carries, so the exe stays
+       small and asks for zero runtime install. Builds on the Mac through the framework's reference assemblies. Core/ is
+       free of Windows and shared with the Linux build. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Culpmit</AssemblyName>
+    <RootNamespace>Culpmit</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>Culpmit</Product>
+    <Company>Simon Booban</Company>
+    <Copyright>MIT</Copyright>
+    <ApplicationIcon>Culpmit.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DefaultItemExcludes>$(DefaultItemExcludes);build.noindex/**;Tests/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+</Project>
